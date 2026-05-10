@@ -98,20 +98,14 @@ def read_script_snapshot(filename):
     data["filename"] = safe_filename
     return data
 
-def generate_fish_audio(text, output_path, model_id=None):
+def generate_fish_audio(text, output_path):
     if not FISH_AUDIO_API_KEY:
         return False, "Fish Audio API key no configurada. Revisa el archivo .env."
     try:
         client = FishAudio(api_key=FISH_AUDIO_API_KEY)
-        
-        # Fish Audio TTS request
-        # Si model_id está presente, usa reference_id. Si no, default.
-        request_args = {"text": text}
-        if model_id:
-            request_args["reference_id"] = model_id
-            
+
         with open(output_path, "wb") as f:
-            for chunk in client.tts.stream(**request_args):
+            for chunk in client.tts.stream(text=text):
                 f.write(chunk)
         return True, None
     except Exception as e:
@@ -192,8 +186,7 @@ def generate_audio():
     if engine != 'fish':
         return jsonify({"error": "Motor de audio no soportado. Usa Fish.audio."}), 400
 
-    model_id = data.get('model_id')
-    success, error = generate_fish_audio(text, output_path, model_id)
+    success, error = generate_fish_audio(text, output_path)
     if not success:
         return jsonify({"error": error}), 500
             
@@ -371,3 +364,4 @@ def serve_output(filename):
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+

@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const generateAllBtn = document.getElementById('generate-all-btn');
     const downloadZipBtn = document.getElementById('download-zip-btn');
     const generateAllParallelBtn = document.getElementById('generate-all-parallel-btn');
-    const fishOptions = document.querySelector('.fish-options');
     const savedScriptStatus = document.getElementById('saved-script-status');
     const clearOutputsBtn = document.getElementById('clear-outputs-btn');
     const resetMediaBtn = document.getElementById('reset-media-btn');
@@ -77,10 +76,6 @@ document.addEventListener('DOMContentLoaded', () => {
             savedScriptsSelect.innerHTML = '<option value="">No se pudieron cargar guiones</option>';
             if (restoreScriptBtn) restoreScriptBtn.disabled = true;
         }
-    }
-
-    if (fishOptions) {
-        fishOptions.style.display = 'block';
     }
 
     parseBtn.addEventListener('click', async () => {
@@ -201,7 +196,6 @@ document.addEventListener('DOMContentLoaded', () => {
     generateAllBtn.addEventListener('click', async () => {
         if (!currentData || !currentData.phrases.length) return;
 
-        const modelId = document.getElementById('fish-model-id').value.trim();
         generateAllBtn.disabled = true;
 
         alert('Iniciando Robot Fish.audio. Se abrirá una ventana del navegador si hace falta iniciar sesión.');
@@ -219,8 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     phrases: currentData.phrases,
-                    engine: 'fish',
-                    model_id: modelId || null
+                    engine: 'fish'
                 })
             });
 
