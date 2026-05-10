@@ -13,6 +13,13 @@ def _resolve_worker_count(worker_count, total_items):
     return max(1, min(configured, total_items or 1))
 
 
+def _resolve_generation_timeout_seconds():
+    try:
+        return max(300, int(os.environ.get("GROK_VIDEO_TIMEOUT_SECONDS", "1200")))
+    except ValueError:
+        return 1200
+
+
 def _image_path_for_id(image_folder, image_id):
     png_path = os.path.join(image_folder, f"{image_id}.png")
     jpg_path = os.path.join(image_folder, f"{image_id}.jpg")
@@ -110,13 +117,73 @@ async def _select_grok_video_quality(page, worker_id, quality="720p"):
     return False
 
 
+async def _mark_existing_grok_outputs(page):
+    await page.evaluate("""() => {
+        window.grokOldVideoCount = document.querySelectorAll('video').length;
+        window.grokOldVideoSrcs = Array.from(document.querySelectorAll('video'))
+            .map(video => video.currentSrc || video.src || video.querySelector('source')?.src || '')
+            .filter(Boolean);
+        window.grokOldDownloadCount = document.querySelectorAll(
+            'button[aria-label*="ownload"], button[aria-label*="escargar"], a[download], a[aria-label*="ownload"]'
+        ).length;
+        Array.from(document.querySelectorAll('[class], div, span, p')).forEach(node => {
+            const text = (node.innerText || node.textContent || '').trim();
+            if (/Something went wrong|Try again|failed|fallo|falló|error al generar|no se pudo/i.test(text)) {
+                node.classList.add('grok-old-error-mark');
+            }
+        });
+    }""")
+
+
+async def _new_grok_video_count(page):
+    return await page.evaluate("""() => {
+        const oldCount = window.grokOldVideoCount || 0;
+        const oldSrcs = window.grokOldVideoSrcs || [];
+        const videos = Array.from(document.querySelectorAll('video'));
+        return videos.filter((video, index) => {
+            if (index >= oldCount) return true;
+            const src = video.currentSrc || video.src || video.querySelector('source')?.src || '';
+            return src && !oldSrcs.includes(src);
+        }).length;
+    }""")
+
+
+async def _new_download_button_visible(page):
+    return await page.evaluate("""() => {
+        const oldCount = window.grokOldDownloadCount || 0;
+        const buttons = Array.from(document.querySelectorAll(
+            'button[aria-label*="ownload"], button[aria-label*="escargar"], a[download], a[aria-label*="ownload"]'
+        ));
+        return buttons.slice(oldCount).some(button => {
+            const rect = button.getBoundingClientRect();
+            const style = window.getComputedStyle(button);
+            return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+        });
+    }""")
+
+
+async def _new_grok_error_visible(page):
+    return await page.evaluate("""() => {
+        return Array.from(document.querySelectorAll('div, span, p')).some(node => {
+            if (node.classList.contains('grok-old-error-mark')) return false;
+            const text = (node.innerText || node.textContent || '').trim();
+            if (!/Something went wrong|Try again|failed|fallo|falló|error al generar|no se pudo/i.test(text)) return false;
+            const rect = node.getBoundingClientRect();
+            const style = window.getComputedStyle(node);
+            return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+        });
+    }""")
+
+
 async def _download_visible_video(page, output_video_path, worker_id):
     try:
         download_buttons = page.locator(
             'button[aria-label*="ownload"], button[aria-label*="escargar"], '
             'a[download], a[aria-label*="ownload"]'
         )
-        for index in range(await download_buttons.count()):
+        old_download_count = await page.evaluate("() => window.grokOldDownloadCount || 0")
+        button_count = await download_buttons.count()
+        for index in list(range(old_download_count, button_count)) + list(range(button_count - 1, -1, -1)):
             button = download_buttons.nth(index)
             if await button.is_visible():
                 print(f"[GrokAutomator][W{worker_id}] Boton de descarga encontrado.")
@@ -130,8 +197,10 @@ async def _download_visible_video(page, output_video_path, worker_id):
 
     try:
         videos = page.locator("video")
-        if await videos.count() > 0:
-            video = videos.last
+        old_video_count = await page.evaluate("() => window.grokOldVideoCount || 0")
+        video_count = await videos.count()
+        if video_count > 0:
+            video = videos.nth(old_video_count) if video_count > old_video_count else videos.last
             await video.click(button="right", force=True)
             await page.wait_for_timeout(1000)
 
@@ -149,14 +218,21 @@ async def _download_visible_video(page, output_video_path, worker_id):
         pass
 
     try:
-        videos = page.locator("video")
-        if await videos.count() > 0:
-            video = videos.last
-            video_src = await video.evaluate('el => el.src || el.querySelector("source")?.src || ""')
-            if video_src:
-                print(f"[GrokAutomator][W{worker_id}] Descargando video desde URL directa...")
-                urllib.request.urlretrieve(video_src, output_video_path)
-                return True
+        video_src = await page.evaluate("""() => {
+            const oldCount = window.grokOldVideoCount || 0;
+            const oldSrcs = window.grokOldVideoSrcs || [];
+            const videos = Array.from(document.querySelectorAll('video'));
+            const video = videos.find((item, index) => {
+                if (index >= oldCount) return true;
+                const src = item.currentSrc || item.src || item.querySelector('source')?.src || '';
+                return src && !oldSrcs.includes(src);
+            }) || videos[videos.length - 1];
+            return video ? (video.currentSrc || video.src || video.querySelector('source')?.src || '') : '';
+        }""")
+        if video_src:
+            print(f"[GrokAutomator][W{worker_id}] Descargando video desde URL directa...")
+            urllib.request.urlretrieve(video_src, output_video_path)
+            return True
     except Exception:
         pass
 
@@ -195,13 +271,14 @@ async def _animate_one_image(page, grok_input, image_id, image_path, output_fold
     await page.keyboard.insert_text(prompt_text)
     await page.wait_for_timeout(500)
 
+    await _mark_existing_grok_outputs(page)
     await page.keyboard.press("Enter")
     print(f"[GrokAutomator][W{worker_id}] Enviado {image_id}. Esperando inicio...")
     await page.wait_for_timeout(5000)
 
     thumbnail_clicked = False
-    for _ in range(30):
-        if await page.locator("video").count() > 0:
+    for _ in range(90):
+        if await _new_grok_video_count(page) > 0:
             thumbnail_clicked = True
             break
 
@@ -231,16 +308,22 @@ async def _animate_one_image(page, grok_input, image_id, image_path, output_fold
         print(f"[GrokAutomator][W{worker_id}] [WARNING] No se encontro thumbnail para {image_id}; continuo esperando.")
 
     generation_complete = False
-    for wait_index in range(150):
-        video_count = await page.locator("video").count()
+    max_wait_seconds = _resolve_generation_timeout_seconds()
+    max_attempts = max_wait_seconds // 2
+    for wait_index in range(max_attempts):
+        new_video_count = await _new_grok_video_count(page)
         generating_text = page.locator("text=/Generating|Generando/i")
         still_generating = (await generating_text.count() > 0) and (await generating_text.first.is_visible())
-        download_locator = page.locator('button[aria-label*="ownload"], button[aria-label*="escargar"], a[download]')
-        download_visible = (await download_locator.count() > 0) and (await download_locator.first.is_visible())
+        download_visible = await _new_download_button_visible(page)
+        explicit_error_visible = await _new_grok_error_visible(page)
 
-        if download_visible or (video_count > 0 and not still_generating):
+        if download_visible or (new_video_count > 0 and not still_generating):
             print(f"[GrokAutomator][W{worker_id}] Video {image_id} listo tras {wait_index * 2}s.")
             generation_complete = True
+            break
+
+        if explicit_error_visible and not still_generating and new_video_count == 0:
+            print(f"[GrokAutomator][W{worker_id}] [ERROR] Grok reporto error real para {image_id}.")
             break
 
         if still_generating and wait_index % 5 == 0:
@@ -249,11 +332,13 @@ async def _animate_one_image(page, grok_input, image_id, image_path, output_fold
                 print(f"[GrokAutomator][W{worker_id}] {image_id}: {progress}...")
             except Exception:
                 pass
+        elif wait_index > 0 and wait_index % 30 == 0:
+            print(f"[GrokAutomator][W{worker_id}] {image_id}: esperando 720p ({wait_index * 2}s/{max_wait_seconds}s)...")
 
         await page.wait_for_timeout(2000)
 
     if not generation_complete:
-        print(f"[GrokAutomator][W{worker_id}] [WARNING] Tiempo agotado esperando video {image_id}.")
+        print(f"[GrokAutomator][W{worker_id}] [WARNING] No se confirmo finalizacion de {image_id} tras {max_wait_seconds}s.")
 
     await page.wait_for_timeout(3000)
     download_success = await _download_visible_video(page, output_video_path, worker_id)
