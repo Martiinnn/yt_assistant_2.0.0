@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const generateAllBtn = document.getElementById('generate-all-btn');
     const downloadZipBtn = document.getElementById('download-zip-btn');
     const generateAllParallelBtn = document.getElementById('generate-all-parallel-btn');
-    const engineRadios = document.getElementsByName('engine');
     const fishOptions = document.querySelector('.fish-options');
     const savedScriptStatus = document.getElementById('saved-script-status');
     const clearOutputsBtn = document.getElementById('clear-outputs-btn');
@@ -66,7 +65,10 @@ document.addEventListener('DOMContentLoaded', () => {
             savedScriptsSelect.appendChild(new Option('Elegir guion guardado...', ''));
             scripts.forEach((script) => {
                 const counts = script.counts || {};
-                const label = `${script.created_at} - ${counts.prompts || 0} prompts / ${counts.phrases || 0} frases`;
+                const cleanLabel = (script.label || script.filename)
+                    .replace(/^frase_1_/, 'Frase 1: ')
+                    .replace(/_\d{8}_\d{6}$/, '');
+                const label = `${cleanLabel} - ${counts.prompts || 0} prompts / ${counts.phrases || 0} frases`;
                 savedScriptsSelect.appendChild(new Option(label, script.filename));
             });
 
@@ -77,16 +79,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Toggle Fish Audio options
-    engineRadios.forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            if (e.target.value === 'fish') {
-                fishOptions.style.display = 'block';
-            } else {
-                fishOptions.style.display = 'none';
-            }
-        });
-    });
+    if (fishOptions) {
+        fishOptions.style.display = 'block';
+    }
 
     parseBtn.addEventListener('click', async () => {
         const script = scriptInput.value.trim();
@@ -206,103 +201,54 @@ document.addEventListener('DOMContentLoaded', () => {
     generateAllBtn.addEventListener('click', async () => {
         if (!currentData || !currentData.phrases.length) return;
 
-        const engine = document.querySelector('input[name="engine"]:checked').value;
         const modelId = document.getElementById('fish-model-id').value.trim();
-
         generateAllBtn.disabled = true;
 
-        if (engine === 'fish') {
-            // Usa el Robot Automático (Playwright)
-            alert("¡Iniciando Robot Automático! Se abrirá una ventana del navegador. Si es tu primera vez, por favor inicia sesión rápidamente. El robot se encargará del resto.");
+        alert('Iniciando Robot Fish.audio. Se abrirá una ventana del navegador si hace falta iniciar sesión.');
 
-            // Marcar todos como generando
+        currentData.phrases.forEach(phrase => {
+            const card = document.getElementById(`phrase-card-${phrase.id}`);
+            const statusLabel = document.getElementById(`phrase-status-${phrase.id}`);
+            card.classList.add('generating');
+            statusLabel.textContent = 'En cola (Fish)...';
+        });
+
+        try {
+            const response = await fetch('/generate-batch-fish', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phrases: currentData.phrases,
+                    engine: 'fish',
+                    model_id: modelId || null
+                })
+            });
+
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+
             currentData.phrases.forEach(phrase => {
                 const card = document.getElementById(`phrase-card-${phrase.id}`);
                 const statusLabel = document.getElementById(`phrase-status-${phrase.id}`);
-                card.classList.add('generating');
-                statusLabel.textContent = 'En cola (Robot)...';
+                card.classList.remove('generating');
+                card.classList.add('done');
+                statusLabel.textContent = '✅ Listo';
+
+                const audioPlayer = document.getElementById(`audio-${phrase.id}`);
+                audioPlayer.src = `/outputs/${phrase.id}.mp3?t=${new Date().getTime()}`;
+                audioPlayer.style.display = 'block';
             });
-
-            try {
-                const response = await fetch('/generate-batch-fish', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        phrases: currentData.phrases
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.error) throw new Error(data.error);
-
-                // Marcar todos como listos
-                currentData.phrases.forEach(phrase => {
-                    const card = document.getElementById(`phrase-card-${phrase.id}`);
-                    const statusLabel = document.getElementById(`phrase-status-${phrase.id}`);
-                    card.classList.remove('generating');
-                    card.classList.add('done');
-                    statusLabel.textContent = '✅ Listo';
-
-                    const audioPlayer = document.getElementById(`audio-${phrase.id}`);
-                    audioPlayer.src = `/outputs/${phrase.id}.mp3?t=${new Date().getTime()}`;
-                    audioPlayer.style.display = 'block';
-                });
-
-            } catch (err) {
-                currentData.phrases.forEach(phrase => {
-                    const card = document.getElementById(`phrase-card-${phrase.id}`);
-                    card.classList.remove('generating');
-                });
-                alert('Error en el robot: ' + err.message);
-            }
-
-        } else {
-            // Edge TTS (Generación individual)
-            for (const phrase of currentData.phrases) {
+        } catch (err) {
+            currentData.phrases.forEach(phrase => {
                 const card = document.getElementById(`phrase-card-${phrase.id}`);
-                const statusLabel = document.getElementById(`phrase-status-${phrase.id}`);
-
-                card.classList.add('generating');
-                statusLabel.textContent = 'Generando...';
-
-                try {
-                    const response = await fetch('/generate-audio', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id: phrase.id,
-                            text: phrase.text,
-                            engine: engine,
-                            model_id: modelId || null
-                        })
-                    });
-
-                    const data = await response.json();
-                    card.classList.remove('generating');
-
-                    if (data.error) throw new Error(data.error);
-
-                    card.classList.add('done');
-                    statusLabel.textContent = '✅ Listo';
-
-                    // Show audio player
-                    const audioPlayer = document.getElementById(`audio-${phrase.id}`);
-                    audioPlayer.src = `/outputs/${phrase.id}.mp3?t=${new Date().getTime()}`;
-                    audioPlayer.style.display = 'block';
-
-                } catch (err) {
-                    card.classList.remove('generating');
-                    statusLabel.textContent = '❌ Error';
-                    statusLabel.style.color = '#ef4444';
-                    console.error(`Error generating phrase ${phrase.id}:`, err);
-                }
-            }
+                card.classList.remove('generating');
+            });
+            alert('Error en el robot Fish: ' + err.message);
         }
 
         generateAllBtn.disabled = false;
         downloadZipBtn.disabled = false;
-        generateAllBtn.textContent = 'Regenerar Todos';
+        generateAllBtn.textContent = 'Regenerar audios';
     });
 
     // IMAGE AUTOMATION
@@ -407,11 +353,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (generateAllParallelBtn) {
         generateAllParallelBtn.addEventListener('click', async () => {
             if (!currentData || !currentData.prompts.length || !currentData.phrases.length) return;
-
-            const engine = document.querySelector('input[name="engine"]:checked').value;
-            if (engine !== 'fish') {
-                alert('¡Atención! Para usar el bot en paralelo se enviará a Fish Audio mediante Playwright.');
-            }
 
             generateAllParallelBtn.disabled = true;
             const refImageInput = document.getElementById('ref-image');

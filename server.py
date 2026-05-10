@@ -7,7 +7,6 @@ from flask import Flask, request, jsonify, render_template, send_file
 from script_parser import parse_script
 from fish_automator import generate_batch_fish_audio_playwright
 import asyncio
-import edge_tts
 from fishaudio import FishAudio
 from dotenv import load_dotenv
 
@@ -35,12 +34,17 @@ def parse_worker_count(raw_value, default_value, max_value=5):
         value = default_value
     return max(1, min(value, max_value))
 
+def slugify_text(text, fallback="guion", max_length=58):
+    safe_text = ''.join(char if char.isalnum() else '_' for char in text.lower()).strip('_')
+    safe_text = '_'.join(part for part in safe_text.split('_') if part)
+    return safe_text[:max_length] or fallback
+
 def save_script_snapshot(raw_script, parsed):
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    first_line = raw_script.strip().splitlines()[0][:48] if raw_script.strip() else 'guion'
-    safe_title = ''.join(char if char.isalnum() else '_' for char in first_line.lower()).strip('_')
-    safe_title = safe_title[:40] or 'guion'
-    filename = f"{timestamp}_{safe_title}.json"
+    phrases = parsed.get("phrases", [])
+    first_phrase = phrases[0].get("text", "") if phrases else ""
+    safe_title = slugify_text(first_phrase, "frase_1")
+    filename = f"frase_1_{safe_title}_{timestamp}.json"
     path = os.path.join(app.config['SCRIPTS_FOLDER'], filename)
 
     payload = {
@@ -93,15 +97,6 @@ def read_script_snapshot(filename):
     data["saved_script"] = path
     data["filename"] = safe_filename
     return data
-
-async def generate_edge_tts(text, output_path, voice="es-MX-JorgeNeural"):
-    try:
-        communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(output_path)
-        return True
-    except Exception as e:
-        print(f"Edge TTS Error: {e}")
-        return False
 
 def generate_fish_audio(text, output_path, model_id=None):
     if not FISH_AUDIO_API_KEY:
@@ -176,7 +171,7 @@ def generate_audio():
     data = request.json
     text = data.get('text')
     file_id = data.get('id')
-    engine = data.get('engine', 'edge')
+    engine = data.get('engine', 'fish')
     
     if not text or not file_id:
         return jsonify({"error": "Missing text or id"}), 400
@@ -194,17 +189,13 @@ def generate_audio():
     
     output_path = os.path.join(app.config['OUTPUT_FOLDER'], f"{file_id}.mp3")
     
-    if engine == 'fish':
-        model_id = data.get('model_id')
-        success, error = generate_fish_audio(text, output_path, model_id)
-        if not success:
-            return jsonify({"error": error}), 500
-    else:
-        # Edge TTS
-        voice = data.get('voice', 'es-MX-JorgeNeural')
-        success = asyncio.run(generate_edge_tts(text, output_path, voice))
-        if not success:
-            return jsonify({"error": "Edge TTS generation failed"}), 500
+    if engine != 'fish':
+        return jsonify({"error": "Motor de audio no soportado. Usa Fish.audio."}), 400
+
+    model_id = data.get('model_id')
+    success, error = generate_fish_audio(text, output_path, model_id)
+    if not success:
+        return jsonify({"error": error}), 500
             
     return jsonify({"success": True, "file_id": file_id, "path": output_path})
 

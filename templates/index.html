@@ -41,7 +41,7 @@
                                 <option value="">No hay guiones cargados</option>
                             </select>
                         </label>
-                        <button id="restore-script-btn" class="btn secondary" disabled>Restaurar</button>
+                        <button id="restore-script-btn" class="btn restore" disabled>Restaurar guion</button>
                     </div>
                     <div class="action-row">
                         <button id="parse-btn" class="btn primary">Procesar guion nuevo</button>
@@ -125,11 +125,8 @@
                         </div>
 
                         <div class="control-stack">
-                            <div class="segmented engine-selector">
-                                <label><input type="radio" name="engine" value="edge" checked> Edge TTS</label>
-                                <label><input type="radio" name="engine" value="fish"> Fish.audio</label>
-                            </div>
-                            <div class="fish-options" style="display: none;">
+                            <input type="hidden" name="engine" value="fish">
+                            <div class="fish-options">
                                 <input type="text" id="fish-model-id" placeholder="ID del modelo de Fish Audio">
                             </div>
                             <div class="button-pair">
