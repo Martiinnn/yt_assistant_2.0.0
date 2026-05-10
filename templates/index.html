@@ -33,8 +33,19 @@
                     </div>
                 </div>
                 <textarea id="script-input" placeholder="NIVEL 1: EL NINO PRODIGIO..."></textarea>
-                <div class="action-row">
-                    <button id="parse-btn" class="btn primary">Procesar guion</button>
+                <div class="script-actions">
+                    <div class="restore-box">
+                        <label class="field">
+                            <span>Restaurar guion guardado</span>
+                            <select id="saved-scripts-select">
+                                <option value="">No hay guiones cargados</option>
+                            </select>
+                        </label>
+                        <button id="restore-script-btn" class="btn secondary" disabled>Restaurar</button>
+                    </div>
+                    <div class="action-row">
+                        <button id="parse-btn" class="btn primary">Procesar guion nuevo</button>
+                    </div>
                 </div>
             </section>
 

@@ -78,6 +78,22 @@ def clear_folder(folder_path, allowed_extensions=None):
 
     return deleted
 
+def read_script_snapshot(filename):
+    safe_filename = os.path.basename(filename)
+    if not safe_filename.endswith('.json'):
+        raise ValueError("Invalid script file")
+
+    path = os.path.join(app.config['SCRIPTS_FOLDER'], safe_filename)
+    if not os.path.exists(path):
+        raise FileNotFoundError("Saved script not found")
+
+    with open(path, "r", encoding="utf-8") as file:
+        data = json.load(file)
+
+    data["saved_script"] = path
+    data["filename"] = safe_filename
+    return data
+
 async def generate_edge_tts(text, output_path, voice="es-MX-JorgeNeural"):
     try:
         communicate = edge_tts.Communicate(text, voice)
@@ -122,6 +138,38 @@ def parse():
     snapshot_path = save_script_snapshot(raw_script, parsed)
     parsed["saved_script"] = snapshot_path
     return jsonify(parsed)
+
+@app.route('/saved-scripts', methods=['GET'])
+def saved_scripts():
+    scripts = []
+    for entry in os.scandir(app.config['SCRIPTS_FOLDER']):
+        if not entry.is_file() or not entry.name.endswith('.json'):
+            continue
+
+        try:
+            with open(entry.path, "r", encoding="utf-8") as file:
+                data = json.load(file)
+        except Exception:
+            data = {}
+
+        scripts.append({
+            "filename": entry.name,
+            "created_at": data.get("created_at", datetime.fromtimestamp(entry.stat().st_mtime).isoformat(timespec='seconds')),
+            "counts": data.get("counts", {}),
+            "label": entry.name.replace(".json", "")
+        })
+
+    scripts.sort(key=lambda item: item["created_at"], reverse=True)
+    return jsonify({"scripts": scripts})
+
+@app.route('/saved-scripts/<path:filename>', methods=['GET'])
+def load_saved_script(filename):
+    try:
+        return jsonify(read_script_snapshot(filename))
+    except FileNotFoundError:
+        return jsonify({"error": "Saved script not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 @app.route('/generate-audio', methods=['POST'])
 def generate_audio():

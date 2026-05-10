@@ -342,6 +342,7 @@ input:focus {
 }
 
 .field input,
+.field select,
 input[type="text"],
 input[type="number"],
 input[type="file"] {
@@ -353,6 +354,25 @@ input[type="file"] {
     background: #0d1424;
     color: var(--text);
     outline: none;
+}
+
+.field select {
+    appearance: none;
+}
+
+.script-actions {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) auto;
+    gap: 12px;
+    align-items: end;
+    margin-top: 14px;
+}
+
+.restore-box {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    gap: 10px;
+    align-items: end;
 }
 
 input[type="file"] {
@@ -528,7 +548,9 @@ audio {
     .worker-grid,
     .settings-grid,
     .segmented,
-    .button-pair {
+    .button-pair,
+    .script-actions,
+    .restore-box {
         grid-template-columns: 1fr;
     }
 

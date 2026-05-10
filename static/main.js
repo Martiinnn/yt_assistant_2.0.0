@@ -13,6 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const savedScriptStatus = document.getElementById('saved-script-status');
     const clearOutputsBtn = document.getElementById('clear-outputs-btn');
     const resetMediaBtn = document.getElementById('reset-media-btn');
+    const savedScriptsSelect = document.getElementById('saved-scripts-select');
+    const restoreScriptBtn = document.getElementById('restore-script-btn');
 
     let currentData = null;
     let nextPromptIndex = 0;
@@ -22,6 +24,57 @@ document.addEventListener('DOMContentLoaded', () => {
         const grokWorkers = document.getElementById('grok-workers')?.value || '2';
         formData.append('flow_workers', flowWorkers);
         formData.append('grok_workers', grokWorkers);
+    }
+
+    function applyScriptData(data) {
+        currentData = {
+            prompts: data.prompts || [],
+            phrases: data.phrases || []
+        };
+
+        scriptInput.value = data.script || '';
+        renderPrompts(currentData.prompts);
+        renderPhrases(currentData.phrases);
+        if (savedScriptStatus && data.saved_script) {
+            savedScriptStatus.textContent = data.saved_script;
+        }
+        resultsPanel.style.display = 'grid';
+        nextPromptIndex = 0;
+        copyNextBtn.disabled = currentData.prompts.length === 0;
+        generateAllBtn.disabled = currentData.phrases.length === 0;
+        downloadZipBtn.disabled = true;
+        copyNextBtn.textContent = currentData.prompts.length ? `Copiar Prompt ${currentData.prompts[0].id}` : 'Copiar siguiente';
+    }
+
+    async function loadSavedScripts() {
+        if (!savedScriptsSelect) return;
+
+        try {
+            const response = await fetch('/saved-scripts');
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+
+            const scripts = data.scripts || [];
+            savedScriptsSelect.innerHTML = '';
+
+            if (!scripts.length) {
+                savedScriptsSelect.innerHTML = '<option value="">No hay guiones guardados</option>';
+                if (restoreScriptBtn) restoreScriptBtn.disabled = true;
+                return;
+            }
+
+            savedScriptsSelect.appendChild(new Option('Elegir guion guardado...', ''));
+            scripts.forEach((script) => {
+                const counts = script.counts || {};
+                const label = `${script.created_at} - ${counts.prompts || 0} prompts / ${counts.phrases || 0} frases`;
+                savedScriptsSelect.appendChild(new Option(label, script.filename));
+            });
+
+            if (restoreScriptBtn) restoreScriptBtn.disabled = true;
+        } catch (err) {
+            savedScriptsSelect.innerHTML = '<option value="">No se pudieron cargar guiones</option>';
+            if (restoreScriptBtn) restoreScriptBtn.disabled = true;
+        }
     }
 
     // Toggle Fish Audio options
@@ -49,17 +102,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (data.error) throw new Error(data.error);
 
-            currentData = data;
-            renderPrompts(data.prompts);
-            renderPhrases(data.phrases);
-            if (savedScriptStatus && data.saved_script) {
-                savedScriptStatus.textContent = data.saved_script;
-            }
-            resultsPanel.style.display = 'grid';
-            nextPromptIndex = 0;
-            copyNextBtn.disabled = data.prompts.length === 0;
-            generateAllBtn.disabled = data.phrases.length === 0;
-            downloadZipBtn.disabled = true;
+            applyScriptData(data);
+            loadSavedScripts();
 
             // Scroll to results
             resultsPanel.scrollIntoView({ behavior: 'smooth' });
@@ -134,6 +178,30 @@ document.addEventListener('DOMContentLoaded', () => {
             copyPrompt(nextPromptIndex);
         }
     });
+
+    if (savedScriptsSelect && restoreScriptBtn) {
+        savedScriptsSelect.addEventListener('change', () => {
+            restoreScriptBtn.disabled = !savedScriptsSelect.value;
+        });
+
+        restoreScriptBtn.addEventListener('click', async () => {
+            const filename = savedScriptsSelect.value;
+            if (!filename) return;
+
+            restoreScriptBtn.disabled = true;
+            try {
+                const response = await fetch(`/saved-scripts/${encodeURIComponent(filename)}`);
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+                applyScriptData(data);
+                resultsPanel.scrollIntoView({ behavior: 'smooth' });
+            } catch (err) {
+                alert('Error restaurando guion: ' + err.message);
+            } finally {
+                restoreScriptBtn.disabled = !savedScriptsSelect.value;
+            }
+        });
+    }
 
     generateAllBtn.addEventListener('click', async () => {
         if (!currentData || !currentData.phrases.length) return;
@@ -428,4 +496,6 @@ document.addEventListener('DOMContentLoaded', () => {
             generateGrokBtn.disabled = false;
         });
     }
+
+    loadSavedScripts();
 });
