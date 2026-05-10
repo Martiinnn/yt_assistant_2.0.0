@@ -60,6 +60,24 @@ def save_script_snapshot(raw_script, parsed):
 
     return path
 
+def clear_folder(folder_path, allowed_extensions=None):
+    os.makedirs(folder_path, exist_ok=True)
+    deleted = 0
+
+    for entry in os.scandir(folder_path):
+        if entry.is_dir():
+            shutil.rmtree(entry.path)
+            deleted += 1
+            continue
+
+        if allowed_extensions and not entry.name.lower().endswith(allowed_extensions):
+            continue
+
+        os.remove(entry.path)
+        deleted += 1
+
+    return deleted
+
 async def generate_edge_tts(text, output_path, voice="es-MX-JorgeNeural"):
     try:
         communicate = edge_tts.Communicate(text, voice)
@@ -266,6 +284,34 @@ def generate_grok():
         import traceback
         traceback.print_exc()
         print(f"Grok Automator Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/clear-outputs', methods=['POST'])
+def clear_outputs():
+    try:
+        deleted = clear_folder(app.config['OUTPUT_FOLDER'])
+        return jsonify({"success": True, "deleted": deleted})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/reset-media', methods=['POST'])
+def reset_media():
+    try:
+        image_deleted = clear_folder(app.config['IMAGE_OUTPUT_FOLDER'], ('.png', '.jpg', '.jpeg', '.webp'))
+        video_folder = 'image_outputs_animated'
+        video_deleted = clear_folder(video_folder, ('.mp4', '.mov', '.webm', '.mkv'))
+        return jsonify({
+            "success": True,
+            "deleted": {
+                "images": image_deleted,
+                "videos": video_deleted
+            }
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/download-zip', methods=['GET'])
