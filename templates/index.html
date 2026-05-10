@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YT Video Assistant</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-shell">
+        <header class="app-header">
+            <div>
+                <p class="eyebrow">Produccion automatizada</p>
+                <h1>YT Video Assistant</h1>
+                <p class="header-copy">Convierte un guion en prompts, audios, imagenes y videos animados manteniendo el orden de cada escena.</p>
+            </div>
+            <div class="header-status">
+                <span>Flow paralelo</span>
+                <strong>Listo</strong>
+            </div>
+        </header>
+
+        <main class="workspace">
+            <section class="panel setup-panel">
+                <div class="section-heading">
+                    <span class="step-pill">1</span>
+                    <div>
+                        <h2>Pega tu guion</h2>
+                        <p>Procesa el texto de Gemini para separar prompts visuales y frases de audio.</p>
+                    </div>
+                </div>
+                <textarea id="script-input" placeholder="NIVEL 1: EL NINO PRODIGIO..."></textarea>
+                <div class="action-row">
+                    <button id="parse-btn" class="btn primary">Procesar guion</button>
+                </div>
+            </section>
+
+            <section class="results-panel" id="results-panel" style="display: none;">
+                <section class="panel command-panel">
+                    <div class="command-copy">
+                        <span class="step-pill accent">2</span>
+                        <div>
+                            <h2>Fabrica automatica</h2>
+                            <p>Ejecuta Flow, audio y Grok en paralelo. Usa los controles de pestanas para balancear velocidad y estabilidad.</p>
+                        </div>
+                    </div>
+                    <button id="generate-all-parallel-btn" class="btn success wide">Iniciar fabrica de videos</button>
+                </section>
+
+                <section class="production-grid">
+                    <article class="panel production-card">
+                        <div class="section-heading compact">
+                            <span class="step-pill">3</span>
+                            <div>
+                                <h2>Imagenes en Flow</h2>
+                                <p>Genera y descarga cada imagen como su numero de escena.</p>
+                            </div>
+                        </div>
+
+                        <div class="control-stack">
+                            <label class="field">
+                                <span>Imagen de referencia</span>
+                                <input type="file" id="ref-image" accept="image/png, image/jpeg">
+                            </label>
+
+                            <div class="worker-grid">
+                                <label class="field">
+                                    <span>Pestanas Flow</span>
+                                    <input type="number" id="flow-workers" min="1" max="5" value="3">
+                                </label>
+                                <label class="field">
+                                    <span>Pestanas Grok</span>
+                                    <input type="number" id="grok-workers" min="1" max="5" value="2">
+                                </label>
+                            </div>
+
+                            <div class="button-pair">
+                                <button id="copy-next-btn" class="btn secondary">Copiar siguiente</button>
+                                <button id="generate-images-btn" class="btn primary">Robot Google Flow</button>
+                            </div>
+                            <span id="copy-status" class="status-text"></span>
+                        </div>
+
+                        <div id="prompts-list" class="list-container"></div>
+                    </article>
+
+                    <article class="panel production-card">
+                        <div class="section-heading compact">
+                            <span class="step-pill">4</span>
+                            <div>
+                                <h2>Audio</h2>
+                                <p>Genera voces escena por escena y descarga el ZIP final.</p>
+                            </div>
+                        </div>
+
+                        <div class="control-stack">
+                            <div class="segmented engine-selector">
+                                <label><input type="radio" name="engine" value="edge" checked> Edge TTS</label>
+                                <label><input type="radio" name="engine" value="fish"> Fish.audio</label>
+                            </div>
+                            <div class="fish-options" style="display: none;">
+                                <input type="text" id="fish-model-id" placeholder="ID del modelo de Fish Audio">
+                            </div>
+                            <div class="button-pair">
+                                <button id="generate-all-btn" class="btn primary">Generar audios</button>
+                                <button id="download-zip-btn" class="btn success" disabled>Descargar ZIP</button>
+                            </div>
+                        </div>
+
+                        <div id="phrases-list" class="list-container"></div>
+                    </article>
+                </section>
+
+                <section class="panel grok-panel">
+                    <div class="section-heading compact">
+                        <span class="step-pill">5</span>
+                        <div>
+                            <h2>Animacion en Grok</h2>
+                            <p>Usa las imagenes ya descargadas y crea los videos numerados en la carpeta de salida.</p>
+                        </div>
+                    </div>
+                    <button id="generate-grok-btn" class="btn dark wide">Animar imagenes en Grok</button>
+                </section>
+            </section>
+        </main>
+    </div>
+    <script src="/static/main.js"></script>
+</body>
+
+</html>
