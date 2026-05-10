@@ -13,6 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const resetMediaBtn = document.getElementById('reset-media-btn');
     const savedScriptsSelect = document.getElementById('saved-scripts-select');
     const restoreScriptBtn = document.getElementById('restore-script-btn');
+    const checkMissingImagesBtn = document.getElementById('check-missing-images-btn');
+    const missingImagesStatus = document.getElementById('missing-images-status');
 
     let currentData = null;
     let nextPromptIndex = 0;
@@ -42,6 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
         generateAllBtn.disabled = currentData.phrases.length === 0;
         downloadZipBtn.disabled = true;
         copyNextBtn.textContent = currentData.prompts.length ? `Copiar Prompt ${currentData.prompts[0].id}` : 'Copiar siguiente';
+        if (checkMissingImagesBtn) checkMissingImagesBtn.disabled = currentData.prompts.length === 0;
+        if (missingImagesStatus) missingImagesStatus.style.display = 'none';
     }
 
     async function loadSavedScripts() {
@@ -189,6 +193,43 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Error restaurando guion: ' + err.message);
             } finally {
                 restoreScriptBtn.disabled = !savedScriptsSelect.value;
+            }
+        });
+    }
+
+    if (checkMissingImagesBtn) {
+        checkMissingImagesBtn.addEventListener('click', async () => {
+            if (!currentData || !currentData.prompts.length) return;
+
+            checkMissingImagesBtn.disabled = true;
+            try {
+                const response = await fetch('/check-missing-images', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompts: currentData.prompts })
+                });
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                if (missingImagesStatus) {
+                    missingImagesStatus.style.display = 'block';
+
+                    if (!data.missing_ids.length) {
+                        const extraText = data.extra_ids.length ? ` Extras detectados: ${data.extra_ids.join(', ')}.` : '';
+                        missingImagesStatus.textContent = `No faltan imágenes. Encontradas ${data.existing_count} de ${data.expected_count}.${extraText}`;
+                    } else {
+                        const extraText = data.extra_ids.length ? ` Extras: ${data.extra_ids.join(', ')}.` : '';
+                        missingImagesStatus.textContent = `Faltan ${data.missing_ids.length} imágenes: ${data.missing_ids.join(', ')}.${extraText}`;
+                    }
+                }
+            } catch (err) {
+                if (missingImagesStatus) {
+                    missingImagesStatus.style.display = 'block';
+                    missingImagesStatus.textContent = 'No se pudo revisar la carpeta de imágenes: ' + err.message;
+                }
+            } finally {
+                checkMissingImagesBtn.disabled = false;
             }
         });
     }

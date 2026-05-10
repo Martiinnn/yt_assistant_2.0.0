@@ -82,6 +82,23 @@ def clear_folder(folder_path, allowed_extensions=None):
 
     return deleted
 
+
+def collect_numbered_stems(folder_path, allowed_extensions):
+    os.makedirs(folder_path, exist_ok=True)
+    stems = set()
+
+    for entry in os.scandir(folder_path):
+        if not entry.is_file():
+            continue
+        if not entry.name.lower().endswith(allowed_extensions):
+            continue
+
+        stem, _ = os.path.splitext(entry.name)
+        if stem.isdigit():
+            stems.add(stem)
+
+    return stems
+
 def read_script_snapshot(filename):
     safe_filename = os.path.basename(filename)
     if not safe_filename.endswith('.json'):
@@ -238,6 +255,40 @@ def generate_batch_images():
         traceback.print_exc()
         print(f"Image Automator Error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/check-missing-images', methods=['POST'])
+def check_missing_images():
+    data = request.json or {}
+    prompts = data.get('prompts', [])
+
+    if not prompts:
+        return jsonify({"error": "No prompts provided"}), 400
+
+    expected_ids = []
+    for prompt in prompts:
+        prompt_id = str(prompt.get('id', '')).strip()
+        if prompt_id.isdigit():
+            expected_ids.append(prompt_id)
+
+    if not expected_ids:
+        return jsonify({"error": "No valid prompt ids provided"}), 400
+
+    existing_ids = collect_numbered_stems(
+        app.config['IMAGE_OUTPUT_FOLDER'],
+        ('.png', '.jpg', '.jpeg', '.webp')
+    )
+
+    missing_ids = [prompt_id for prompt_id in expected_ids if prompt_id not in existing_ids]
+    extra_ids = sorted(existing_ids - set(expected_ids), key=lambda item: int(item))
+
+    return jsonify({
+        "success": True,
+        "expected_count": len(expected_ids),
+        "existing_count": len([prompt_id for prompt_id in expected_ids if prompt_id in existing_ids]),
+        "missing_ids": missing_ids,
+        "extra_ids": extra_ids
+    })
 
 @app.route('/generate-all', methods=['POST'])
 def generate_all():
