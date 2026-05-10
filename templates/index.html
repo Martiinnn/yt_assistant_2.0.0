@@ -39,12 +39,36 @@
             </section>
 
             <section class="results-panel" id="results-panel" style="display: none;">
+                <section class="panel settings-panel">
+                    <div class="section-heading compact">
+                        <span class="step-pill">2</span>
+                        <div>
+                            <h2>Configura las pestanas</h2>
+                            <p>Sube o baja la cantidad segun estabilidad de Flow y Grok. Mas pestanas puede acelerar, pero tambien exigir mas al navegador.</p>
+                        </div>
+                    </div>
+                    <div class="settings-grid">
+                        <label class="field">
+                            <span>Pestanas Flow</span>
+                            <input type="number" id="flow-workers" min="1" max="5" value="3">
+                        </label>
+                        <label class="field">
+                            <span>Pestanas Grok</span>
+                            <input type="number" id="grok-workers" min="1" max="5" value="2">
+                        </label>
+                        <div class="save-note">
+                            <span>Guion guardado</span>
+                            <strong id="saved-script-status">Se guardara al procesar</strong>
+                        </div>
+                    </div>
+                </section>
+
                 <section class="panel command-panel">
                     <div class="command-copy">
-                        <span class="step-pill accent">2</span>
+                        <span class="step-pill accent">3</span>
                         <div>
                             <h2>Fabrica automatica</h2>
-                            <p>Ejecuta Flow, audio y Grok en paralelo. Usa los controles de pestanas para balancear velocidad y estabilidad.</p>
+                            <p>Ejecuta Flow, audio y Grok en paralelo usando la configuracion anterior.</p>
                         </div>
                     </div>
                     <button id="generate-all-parallel-btn" class="btn success wide">Iniciar fabrica de videos</button>
@@ -53,7 +77,7 @@
                 <section class="production-grid">
                     <article class="panel production-card">
                         <div class="section-heading compact">
-                            <span class="step-pill">3</span>
+                            <span class="step-pill">4</span>
                             <div>
                                 <h2>Imagenes en Flow</h2>
                                 <p>Genera y descarga cada imagen como su numero de escena.</p>
@@ -65,17 +89,6 @@
                                 <span>Imagen de referencia</span>
                                 <input type="file" id="ref-image" accept="image/png, image/jpeg">
                             </label>
-
-                            <div class="worker-grid">
-                                <label class="field">
-                                    <span>Pestanas Flow</span>
-                                    <input type="number" id="flow-workers" min="1" max="5" value="3">
-                                </label>
-                                <label class="field">
-                                    <span>Pestanas Grok</span>
-                                    <input type="number" id="grok-workers" min="1" max="5" value="2">
-                                </label>
-                            </div>
 
                             <div class="button-pair">
                                 <button id="copy-next-btn" class="btn secondary">Copiar siguiente</button>
@@ -89,7 +102,7 @@
 
                     <article class="panel production-card">
                         <div class="section-heading compact">
-                            <span class="step-pill">4</span>
+                            <span class="step-pill">5</span>
                             <div>
                                 <h2>Audio</h2>
                                 <p>Genera voces escena por escena y descarga el ZIP final.</p>
@@ -116,7 +129,7 @@
 
                 <section class="panel grok-panel">
                     <div class="section-heading compact">
-                        <span class="step-pill">5</span>
+                        <span class="step-pill">6</span>
                         <div>
                             <h2>Animacion en Grok</h2>
                             <p>Usa las imagenes ya descargadas y crea los videos numerados en la carpeta de salida.</p>

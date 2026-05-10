@@ -1,6 +1,8 @@
 import os
 import zipfile
 import shutil
+import json
+from datetime import datetime
 from flask import Flask, request, jsonify, render_template, send_file
 from script_parser import parse_script
 from fish_automator import generate_batch_fish_audio_playwright
@@ -15,12 +17,14 @@ app = Flask(__name__)
 app.config['OUTPUT_FOLDER'] = 'outputs'
 app.config['IMAGE_OUTPUT_FOLDER'] = 'image_outputs'
 app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['SCRIPTS_FOLDER'] = 'saved_scripts'
 app.config['DEFAULT_FLOW_WORKERS'] = int(os.environ.get('FLOW_WORKERS', '3'))
 app.config['DEFAULT_GROK_WORKERS'] = int(os.environ.get('GROK_WORKERS', '2'))
 
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 os.makedirs(app.config['IMAGE_OUTPUT_FOLDER'], exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['SCRIPTS_FOLDER'], exist_ok=True)
 
 FISH_AUDIO_API_KEY = os.environ.get("FISH_AUDIO_API_KEY")
 
@@ -30,6 +34,31 @@ def parse_worker_count(raw_value, default_value, max_value=5):
     except (TypeError, ValueError):
         value = default_value
     return max(1, min(value, max_value))
+
+def save_script_snapshot(raw_script, parsed):
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    first_line = raw_script.strip().splitlines()[0][:48] if raw_script.strip() else 'guion'
+    safe_title = ''.join(char if char.isalnum() else '_' for char in first_line.lower()).strip('_')
+    safe_title = safe_title[:40] or 'guion'
+    filename = f"{timestamp}_{safe_title}.json"
+    path = os.path.join(app.config['SCRIPTS_FOLDER'], filename)
+
+    payload = {
+        "created_at": datetime.now().isoformat(timespec='seconds'),
+        "source": "web_parse",
+        "script": raw_script,
+        "prompts": parsed.get("prompts", []),
+        "phrases": parsed.get("phrases", []),
+        "counts": {
+            "prompts": len(parsed.get("prompts", [])),
+            "phrases": len(parsed.get("phrases", []))
+        }
+    }
+
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False, indent=2)
+
+    return path
 
 async def generate_edge_tts(text, output_path, voice="es-MX-JorgeNeural"):
     try:
@@ -70,7 +99,10 @@ def parse():
     if not data or 'script' not in data:
         return jsonify({"error": "No script provided"}), 400
     
-    parsed = parse_script(data['script'])
+    raw_script = data['script']
+    parsed = parse_script(raw_script)
+    snapshot_path = save_script_snapshot(raw_script, parsed)
+    parsed["saved_script"] = snapshot_path
     return jsonify(parsed)
 
 @app.route('/generate-audio', methods=['POST'])

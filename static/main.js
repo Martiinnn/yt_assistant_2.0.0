@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const generateAllParallelBtn = document.getElementById('generate-all-parallel-btn');
     const engineRadios = document.getElementsByName('engine');
     const fishOptions = document.querySelector('.fish-options');
+    const savedScriptStatus = document.getElementById('saved-script-status');
 
     let currentData = null;
     let nextPromptIndex = 0;
@@ -49,6 +50,9 @@ document.addEventListener('DOMContentLoaded', () => {
             currentData = data;
             renderPrompts(data.prompts);
             renderPhrases(data.phrases);
+            if (savedScriptStatus && data.saved_script) {
+                savedScriptStatus.textContent = data.saved_script;
+            }
             resultsPanel.style.display = 'grid';
             nextPromptIndex = 0;
             copyNextBtn.disabled = data.prompts.length === 0;

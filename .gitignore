@@ -6,6 +6,7 @@ image_outputs/
 outputs/
 test_data/
 uploads/
+saved_scripts/
 *.pyc
 *.pyo
 
