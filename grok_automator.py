@@ -85,6 +85,31 @@ async def _wait_for_image(image_folder, image_id, worker_id):
     return None
 
 
+async def _select_grok_video_quality(page, worker_id, quality="720p"):
+    try:
+        quality_option = page.locator(
+            f'button:has-text("{quality}"), div[role="button"]:has-text("{quality}")'
+        ).first
+
+        if await quality_option.is_visible(timeout=3000):
+            await quality_option.click(force=True)
+            print(f"[GrokAutomator][W{worker_id}] Calidad de video seleccionada: {quality}.")
+            await page.wait_for_timeout(500)
+            return True
+
+        text_option = page.locator(f'text="{quality}"').first
+        if await text_option.is_visible(timeout=1000):
+            await text_option.click(force=True)
+            print(f"[GrokAutomator][W{worker_id}] Calidad de video seleccionada: {quality}.")
+            await page.wait_for_timeout(500)
+            return True
+    except Exception as exc:
+        print(f"[GrokAutomator][W{worker_id}] [WARNING] No se pudo seleccionar {quality}: {exc}")
+
+    print(f"[GrokAutomator][W{worker_id}] [WARNING] Opcion {quality} no visible; continuo con la calidad actual.")
+    return False
+
+
 async def _download_visible_video(page, output_video_path, worker_id):
     try:
         download_buttons = page.locator(
@@ -154,6 +179,8 @@ async def _animate_one_image(page, grok_input, image_id, image_path, output_fold
             await page.wait_for_timeout(500)
     except Exception:
         pass
+
+    await _select_grok_video_quality(page, worker_id, "720p")
 
     file_input = page.locator('input[type="file"]').first
     await file_input.set_input_files(image_path)
