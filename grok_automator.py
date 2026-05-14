@@ -31,6 +31,10 @@ def _image_path_for_id(image_folder, image_id):
     return None
 
 
+def _flow_failure_marker_path(image_folder, image_id):
+    return os.path.join(image_folder, f"{image_id}.failed")
+
+
 async def _prepare_grok_page(browser, worker_id, page=None):
     page = page or await browser.new_page()
     print(f"[GrokAutomator][W{worker_id}] Verificando sesion en Grok...")
@@ -87,6 +91,11 @@ async def _wait_for_image(image_folder, image_id, worker_id):
         image_path = _image_path_for_id(image_folder, image_id)
         if image_path:
             return image_path
+
+        if os.path.exists(_flow_failure_marker_path(image_folder, image_id)):
+            print(f"[GrokAutomator][W{worker_id}] Flow abandono imagen {image_id} tras 3 intentos.")
+            return None
+
         await asyncio.sleep(2)
 
     return None

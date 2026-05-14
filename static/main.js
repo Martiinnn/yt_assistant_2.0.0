@@ -15,15 +15,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const restoreScriptBtn = document.getElementById('restore-script-btn');
     const checkMissingImagesBtn = document.getElementById('check-missing-images-btn');
     const missingImagesStatus = document.getElementById('missing-images-status');
+    const podcastScriptInput = document.getElementById('podcast-script-input');
+    const parsePodcastBtn = document.getElementById('parse-podcast-btn');
+    const generatePodcastFlowBtn = document.getElementById('generate-podcast-flow-btn');
+    const podcastRefImageInput = document.getElementById('podcast-ref-image');
+    const podcastPromptsList = document.getElementById('podcast-prompts-list');
+    const podcastStatus = document.getElementById('podcast-status');
 
     let currentData = null;
+    let podcastData = { prompts: [] };
     let nextPromptIndex = 0;
 
     function appendWorkerSettings(formData) {
         const flowWorkers = document.getElementById('flow-workers')?.value || '3';
         const grokWorkers = document.getElementById('grok-workers')?.value || '2';
+        const flowImageRatio = document.getElementById('flow-image-ratio')?.value || 'keep';
         formData.append('flow_workers', flowWorkers);
         formData.append('grok_workers', grokWorkers);
+        formData.append('flow_image_ratio', flowImageRatio);
     }
 
     function applyScriptData(data) {
@@ -138,6 +147,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 <audio id="audio-${p.id}" controls style="display: none; width: 100%; margin-top: 10px;"></audio>
             `;
             phrasesList.appendChild(div);
+        });
+    }
+
+    function renderPodcastPrompts(prompts) {
+        if (!podcastPromptsList) return;
+        podcastPromptsList.innerHTML = '';
+        prompts.forEach((p) => {
+            const div = document.createElement('div');
+            div.className = 'item-card';
+            div.innerHTML = `
+                <div class="item-header">
+                    <span class="badge">Parte ${p.id}</span>
+                </div>
+                <div class="item-text">${p.text}</div>
+            `;
+            podcastPromptsList.appendChild(div);
         });
     }
 
@@ -339,6 +364,68 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             generateImagesBtn.disabled = false;
+        });
+    }
+
+    if (parsePodcastBtn) {
+        parsePodcastBtn.addEventListener('click', async () => {
+            const script = podcastScriptInput?.value?.trim() || '';
+            if (!script) return alert('Pega el guion de podcast primero.');
+
+            parsePodcastBtn.disabled = true;
+            if (podcastStatus) podcastStatus.textContent = 'Procesando partes de podcast...';
+            try {
+                const response = await fetch('/parse-podcast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ script })
+                });
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                podcastData = { prompts: data.prompts || [] };
+                renderPodcastPrompts(podcastData.prompts);
+                if (generatePodcastFlowBtn) generatePodcastFlowBtn.disabled = podcastData.prompts.length === 0;
+                if (podcastStatus) podcastStatus.textContent = `${podcastData.prompts.length} partes listas para generar.`;
+            } catch (err) {
+                if (podcastStatus) podcastStatus.textContent = '';
+                alert('Error parseando podcast: ' + err.message);
+            } finally {
+                parsePodcastBtn.disabled = false;
+            }
+        });
+    }
+
+    if (generatePodcastFlowBtn) {
+        generatePodcastFlowBtn.addEventListener('click', async () => {
+            if (!podcastData || !podcastData.prompts.length) return;
+
+            generatePodcastFlowBtn.disabled = true;
+            if (podcastStatus) podcastStatus.textContent = 'Generando podcast en Flow con 1 sola ventana...';
+
+            try {
+                const formData = new FormData();
+                formData.append('prompts', JSON.stringify(podcastData.prompts));
+                if (podcastRefImageInput && podcastRefImageInput.files.length > 0) {
+                    formData.append('ref_image', podcastRefImageInput.files[0]);
+                }
+
+                const response = await fetch('/generate-flow-podcast', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                if (podcastStatus) podcastStatus.textContent = 'Podcast completado. Videos en flow_podcast_outputs/.';
+                alert('Podcast generado con exito en flow_podcast_outputs/.');
+            } catch (err) {
+                if (podcastStatus) podcastStatus.textContent = '';
+                alert('Error en podcast Flow: ' + err.message);
+            } finally {
+                generatePodcastFlowBtn.disabled = false;
+            }
         });
     }
 

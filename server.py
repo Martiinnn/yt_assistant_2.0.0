@@ -4,7 +4,7 @@ import shutil
 import json
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template, send_file
-from script_parser import parse_script
+from script_parser import parse_script, parse_podcast_script
 from fish_automator import generate_batch_fish_audio_playwright
 import asyncio
 from fishaudio import FishAudio
@@ -145,6 +145,19 @@ def parse():
     parsed["saved_script"] = snapshot_path
     return jsonify(parsed)
 
+@app.route('/parse-podcast', methods=['POST'])
+def parse_podcast():
+    data = request.json
+    if not data or 'script' not in data:
+        return jsonify({"error": "No script provided"}), 400
+
+    raw_script = data['script']
+    parsed = parse_podcast_script(raw_script)
+    if not parsed.get("prompts"):
+        return jsonify({"error": "No se encontraron bloques de 'Parte X (tiempo):'"}), 400
+
+    return jsonify(parsed)
+
 @app.route('/saved-scripts', methods=['GET'])
 def saved_scripts():
     scripts = []
@@ -245,15 +258,52 @@ def generate_batch_images():
         request.form.get('flow_workers'),
         app.config['DEFAULT_FLOW_WORKERS']
     )
+    flow_image_ratio = request.form.get('flow_image_ratio', 'keep')
             
     try:
         from image_automator import generate_batch_images_flow
-        asyncio.run(generate_batch_images_flow(prompts, app.config['IMAGE_OUTPUT_FOLDER'], ref_image_path, flow_workers))
+        asyncio.run(
+            generate_batch_images_flow(
+                prompts,
+                app.config['IMAGE_OUTPUT_FOLDER'],
+                ref_image_path,
+                flow_workers,
+                flow_image_ratio
+            )
+        )
         return jsonify({"success": True})
     except Exception as e:
         import traceback
         traceback.print_exc()
         print(f"Image Automator Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/generate-flow-podcast', methods=['POST'])
+def generate_flow_podcast():
+    import json
+    prompts_str = request.form.get('prompts', '[]')
+    prompts = json.loads(prompts_str)
+
+    if not prompts:
+        return jsonify({"error": "No prompts provided"}), 400
+
+    ref_image_path = None
+    if 'ref_image' in request.files:
+        file = request.files['ref_image']
+        if file.filename != '':
+            ref_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'ref_image.jpg')
+            file.save(ref_image_path)
+
+    try:
+        from image_automator import generate_podcast_videos_flow
+        app.config['FLOW_PODCAST_OUTPUT_FOLDER'] = 'flow_podcast_outputs'
+        os.makedirs(app.config['FLOW_PODCAST_OUTPUT_FOLDER'], exist_ok=True)
+        asyncio.run(generate_podcast_videos_flow(prompts, app.config['FLOW_PODCAST_OUTPUT_FOLDER'], ref_image_path))
+        return jsonify({"success": True})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Flow Podcast Automator Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -313,6 +363,7 @@ def generate_all():
         request.form.get('flow_workers'),
         app.config['DEFAULT_FLOW_WORKERS']
     )
+    flow_image_ratio = request.form.get('flow_image_ratio', 'keep')
     grok_workers = parse_worker_count(
         request.form.get('grok_workers'),
         app.config['DEFAULT_GROK_WORKERS']
@@ -326,7 +377,15 @@ def generate_all():
         async def run_both():
             # Crear las tareas, pero le damos un pequeño retraso al inicio del segundo
             # para evitar que Playwright se congele al abrir dos navegadores a la vez
-            task1 = asyncio.create_task(generate_batch_images_flow(prompts, app.config['IMAGE_OUTPUT_FOLDER'], ref_image_path, flow_workers))
+            task1 = asyncio.create_task(
+                generate_batch_images_flow(
+                    prompts,
+                    app.config['IMAGE_OUTPUT_FOLDER'],
+                    ref_image_path,
+                    flow_workers,
+                    flow_image_ratio
+                )
+            )
             await asyncio.sleep(3)
             task2 = asyncio.create_task(generate_batch_fish_audio_playwright(phrases, app.config['OUTPUT_FOLDER']))
             await asyncio.sleep(3)
@@ -382,7 +441,7 @@ def clear_outputs():
 @app.route('/reset-media', methods=['POST'])
 def reset_media():
     try:
-        image_deleted = clear_folder(app.config['IMAGE_OUTPUT_FOLDER'], ('.png', '.jpg', '.jpeg', '.webp'))
+        image_deleted = clear_folder(app.config['IMAGE_OUTPUT_FOLDER'], ('.png', '.jpg', '.jpeg', '.webp', '.failed'))
         video_folder = 'image_outputs_animated'
         video_deleted = clear_folder(video_folder, ('.mp4', '.mov', '.webm', '.mkv'))
         return jsonify({

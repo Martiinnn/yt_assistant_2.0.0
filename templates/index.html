@@ -49,6 +49,29 @@
                 </div>
             </section>
 
+            <section class="panel setup-panel">
+                <div class="section-heading">
+                    <span class="step-pill">P</span>
+                    <div>
+                        <h2>Podcast en Flow (1 ventana)</h2>
+                        <p>Pega tu guion por partes (Parte 1, Parte 2, Parte 3...), sube referencia y genera videos de podcast.</p>
+                    </div>
+                </div>
+                <textarea id="podcast-script-input" placeholder="Parte 1 (0:00 - 0:10):&#10;Anima a la mujer...&#10;&#10;Parte 2 (0:10 - 0:20):&#10;Anima a la mujer..."></textarea>
+                <div class="control-stack">
+                    <label class="field">
+                        <span>Imagen de referencia (podcast)</span>
+                        <input type="file" id="podcast-ref-image" accept="image/png, image/jpeg">
+                    </label>
+                    <div class="button-pair">
+                        <button id="parse-podcast-btn" class="btn primary">Procesar guion podcast</button>
+                        <button id="generate-podcast-flow-btn" class="btn success" disabled>Generar podcast en Flow</button>
+                    </div>
+                    <span id="podcast-status" class="status-text"></span>
+                </div>
+                <div id="podcast-prompts-list" class="list-container"></div>
+            </section>
+
             <section class="results-panel" id="results-panel" style="display: none;">
                 <section class="panel settings-panel">
                     <div class="section-heading compact">
@@ -103,6 +126,14 @@
                             <label class="field">
                                 <span>Imagen de referencia</span>
                                 <input type="file" id="ref-image" accept="image/png, image/jpeg">
+                            </label>
+                            <label class="field">
+                                <span>Resolucion Flow</span>
+                                <select id="flow-image-ratio">
+                                    <option value="keep" selected>Mantener actual</option>
+                                    <option value="16:9">16:9</option>
+                                    <option value="9:16">9:16</option>
+                                </select>
                             </label>
 
                             <div class="button-pair">
