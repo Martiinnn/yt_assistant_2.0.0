@@ -2,6 +2,7 @@ import os
 import zipfile
 import shutil
 import json
+import logging
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template, send_file
 from script_parser import parse_script, parse_podcast_script
@@ -11,6 +12,17 @@ from fishaudio import FishAudio
 from dotenv import load_dotenv
 
 load_dotenv()
+
+LOG_LEVEL = os.environ.get("APP_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format='%(asctime)s %(levelname)s [%(name)s] %(message)s',
+    handlers=[
+        logging.FileHandler("server.log", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("yt_assistant")
 
 app = Flask(__name__)
 app.config['OUTPUT_FOLDER'] = 'outputs'
@@ -473,5 +485,12 @@ def serve_output(filename):
     return send_file(os.path.join(app.config['OUTPUT_FOLDER'], filename))
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app_debug = os.environ.get('FLASK_DEBUG', '0') in ('1', 'true', 'True')
+    app_port = int(os.environ.get('PORT', '5000'))
 
+    logger.info("Iniciando servidor en puerto %s (debug=%s, reloader=False)", app_port, app_debug)
+    try:
+        app.run(debug=app_debug, use_reloader=False, port=app_port)
+    except Exception:
+        logger.exception("Fallo fatal al iniciar o ejecutar el servidor")
+        raise
