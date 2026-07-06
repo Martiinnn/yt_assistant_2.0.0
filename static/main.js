@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const phrasesList = document.getElementById('phrases-list');
     const copyNextBtn = document.getElementById('copy-next-btn');
     const generateAllBtn = document.getElementById('generate-all-btn');
+    const generateFishBtn = document.getElementById('generate-fish-btn');
     const downloadZipBtn = document.getElementById('download-zip-btn');
     const generateAllParallelBtn = document.getElementById('generate-all-parallel-btn');
     const savedScriptStatus = document.getElementById('saved-script-status');
@@ -21,10 +22,71 @@ document.addEventListener('DOMContentLoaded', () => {
     const podcastRefImageInput = document.getElementById('podcast-ref-image');
     const podcastPromptsList = document.getElementById('podcast-prompts-list');
     const podcastStatus = document.getElementById('podcast-status');
+    const testVoiceBtn = document.getElementById('test-voice-btn');
+    const testVoiceAudio = document.getElementById('test-voice-audio');
+    const supertonicStatusBadge = document.getElementById('supertonic-status-badge');
 
     let currentData = null;
     let podcastData = { prompts: [] };
     let nextPromptIndex = 0;
+
+    // ─── Supertonic voice settings helper ───
+    function getVoiceSettings() {
+        return {
+            voice: document.getElementById('supertonic-voice')?.value || 'M1',
+            lang: document.getElementById('supertonic-lang')?.value || 'es',
+            speed: parseFloat(document.getElementById('supertonic-speed')?.value || '1.05'),
+            steps: parseInt(document.getElementById('supertonic-steps')?.value || '8', 10),
+        };
+    }
+
+    // ─── Supertonic server status ───
+    async function checkSupertonicStatus() {
+        if (!supertonicStatusBadge) return;
+        try {
+            const r = await fetch('/supertonic-status');
+            const data = await r.json();
+            if (data.online) {
+                supertonicStatusBadge.textContent = '🟢 Conectado';
+                supertonicStatusBadge.className = 'status-badge online';
+                supertonicStatusBadge.title = 'Servidor Supertonic activo';
+            } else {
+                supertonicStatusBadge.textContent = '🔴 Offline';
+                supertonicStatusBadge.className = 'status-badge offline';
+                supertonicStatusBadge.title = 'Ejecuta: supertonic serve --port 7788';
+            }
+        } catch {
+            supertonicStatusBadge.textContent = '🔴 Offline';
+            supertonicStatusBadge.className = 'status-badge offline';
+            supertonicStatusBadge.title = 'No se pudo verificar el estado';
+        }
+    }
+
+    // ─── Load custom voices from server ───
+    async function loadSupertonicVoices() {
+        try {
+            const r = await fetch('/supertonic-voices');
+            const data = await r.json();
+            const select = document.getElementById('supertonic-voice');
+            if (!select || !data.voices) return;
+
+            // Only add custom voices that aren't already in the dropdown
+            const existingValues = new Set(Array.from(select.options).map(o => o.value));
+            const builtins = new Set(['M1','M2','M3','M4','M5','F1','F2','F3','F4','F5']);
+
+            if (Array.isArray(data.voices)) {
+                data.voices.forEach(v => {
+                    const name = typeof v === 'string' ? v : v.name || v;
+                    if (!existingValues.has(name) && !builtins.has(name)) {
+                        const opt = new Option(`${name} (Custom)`, name);
+                        select.appendChild(opt);
+                    }
+                });
+            }
+        } catch {
+            // Voices endpoint may not be available if server is offline
+        }
+    }
 
     function appendWorkerSettings(formData) {
         const flowWorkers = document.getElementById('flow-workers')?.value || '3';
@@ -33,6 +95,15 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('flow_workers', flowWorkers);
         formData.append('grok_workers', grokWorkers);
         formData.append('flow_image_ratio', flowImageRatio);
+    }
+
+    function appendVoiceSettings(formData) {
+        const vs = getVoiceSettings();
+        formData.append('voice', vs.voice);
+        formData.append('lang', vs.lang);
+        formData.append('speed', vs.speed);
+        formData.append('steps', vs.steps);
+        formData.append('audio_engine', 'supertonic');
     }
 
     function applyScriptData(data) {
@@ -51,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
         nextPromptIndex = 0;
         copyNextBtn.disabled = currentData.prompts.length === 0;
         generateAllBtn.disabled = currentData.phrases.length === 0;
+        if (generateFishBtn) generateFishBtn.disabled = currentData.phrases.length === 0;
         downloadZipBtn.disabled = true;
         copyNextBtn.textContent = currentData.prompts.length ? `Copiar Prompt ${currentData.prompts[0].id}` : 'Copiar siguiente';
         if (checkMissingImagesBtn) checkMissingImagesBtn.disabled = currentData.prompts.length === 0;
@@ -259,56 +331,167 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ─── Test voice ───
+    if (testVoiceBtn) {
+        testVoiceBtn.addEventListener('click', async () => {
+            const vs = getVoiceSettings();
+            testVoiceBtn.disabled = true;
+            testVoiceBtn.textContent = '⏳ Generando...';
+
+            try {
+                const response = await fetch('/generate-audio', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: 'Esta es una prueba de voz con Supertonic.',
+                        id: '_test_voice',
+                        engine: 'supertonic',
+                        ...vs,
+                    })
+                });
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                if (testVoiceAudio) {
+                    testVoiceAudio.src = `/outputs/_test_voice.wav?t=${Date.now()}`;
+                    testVoiceAudio.style.display = 'block';
+                    testVoiceAudio.play();
+                }
+            } catch (err) {
+                alert('Error probando voz: ' + err.message);
+            } finally {
+                testVoiceBtn.disabled = false;
+                testVoiceBtn.textContent = '🔊 Probar voz';
+            }
+        });
+    }
+
+    // ─── Generate audios (Supertonic) ───
     generateAllBtn.addEventListener('click', async () => {
         if (!currentData || !currentData.phrases.length) return;
 
         generateAllBtn.disabled = true;
-
-        alert('Iniciando Robot Fish.audio. Se abrirá una ventana del navegador si hace falta iniciar sesión.');
+        const vs = getVoiceSettings();
 
         currentData.phrases.forEach(phrase => {
             const card = document.getElementById(`phrase-card-${phrase.id}`);
             const statusLabel = document.getElementById(`phrase-status-${phrase.id}`);
             card.classList.add('generating');
-            statusLabel.textContent = 'En cola (Fish)...';
+            statusLabel.textContent = 'En cola (Supertonic)...';
         });
 
         try {
-            const response = await fetch('/generate-batch-fish', {
+            const response = await fetch('/generate-batch-supertonic', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     phrases: currentData.phrases,
-                    engine: 'fish'
+                    ...vs,
                 })
             });
 
             const data = await response.json();
             if (data.error) throw new Error(data.error);
 
-            currentData.phrases.forEach(phrase => {
-                const card = document.getElementById(`phrase-card-${phrase.id}`);
-                const statusLabel = document.getElementById(`phrase-status-${phrase.id}`);
-                card.classList.remove('generating');
-                card.classList.add('done');
-                statusLabel.textContent = '✅ Listo';
+            // Update UI for each phrase based on results
+            if (data.results) {
+                data.results.forEach(result => {
+                    const card = document.getElementById(`phrase-card-${result.id}`);
+                    const statusLabel = document.getElementById(`phrase-status-${result.id}`);
+                    if (!card) return;
 
-                const audioPlayer = document.getElementById(`audio-${phrase.id}`);
-                audioPlayer.src = `/outputs/${phrase.id}.mp3?t=${new Date().getTime()}`;
-                audioPlayer.style.display = 'block';
-            });
+                    card.classList.remove('generating');
+                    if (result.success) {
+                        card.classList.add('done');
+                        statusLabel.textContent = result.skipped ? '⏭️ Ya existía' : '✅ Listo';
+                        const audioPlayer = document.getElementById(`audio-${result.id}`);
+                        if (audioPlayer) {
+                            audioPlayer.src = `/outputs/${result.id}.wav?t=${Date.now()}`;
+                            audioPlayer.style.display = 'block';
+                        }
+                    } else {
+                        statusLabel.textContent = `❌ Error: ${result.error || 'desconocido'}`;
+                    }
+                });
+            } else {
+                // Fallback: mark all as done
+                currentData.phrases.forEach(phrase => {
+                    const card = document.getElementById(`phrase-card-${phrase.id}`);
+                    const statusLabel = document.getElementById(`phrase-status-${phrase.id}`);
+                    card.classList.remove('generating');
+                    card.classList.add('done');
+                    statusLabel.textContent = '✅ Listo';
+                    const audioPlayer = document.getElementById(`audio-${phrase.id}`);
+                    if (audioPlayer) {
+                        audioPlayer.src = `/outputs/${phrase.id}.wav?t=${Date.now()}`;
+                        audioPlayer.style.display = 'block';
+                    }
+                });
+            }
         } catch (err) {
             currentData.phrases.forEach(phrase => {
                 const card = document.getElementById(`phrase-card-${phrase.id}`);
                 card.classList.remove('generating');
             });
-            alert('Error en el robot Fish: ' + err.message);
+            alert('Error generando audios con Supertonic: ' + err.message);
         }
 
         generateAllBtn.disabled = false;
         downloadZipBtn.disabled = false;
-        generateAllBtn.textContent = 'Regenerar audios';
+        generateAllBtn.textContent = 'Regenerar audios (Supertonic)';
     });
+
+    // ─── Generate audios (Fish Audio backup) ───
+    if (generateFishBtn) {
+        generateFishBtn.addEventListener('click', async () => {
+            if (!currentData || !currentData.phrases.length) return;
+
+            generateFishBtn.disabled = true;
+            alert('Iniciando Robot Fish.audio (backup). Se abrirá una ventana del navegador si hace falta iniciar sesión.');
+
+            currentData.phrases.forEach(phrase => {
+                const card = document.getElementById(`phrase-card-${phrase.id}`);
+                const statusLabel = document.getElementById(`phrase-status-${phrase.id}`);
+                card.classList.add('generating');
+                statusLabel.textContent = 'En cola (Fish)...';
+            });
+
+            try {
+                const response = await fetch('/generate-batch-fish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phrases: currentData.phrases,
+                        engine: 'fish'
+                    })
+                });
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                currentData.phrases.forEach(phrase => {
+                    const card = document.getElementById(`phrase-card-${phrase.id}`);
+                    const statusLabel = document.getElementById(`phrase-status-${phrase.id}`);
+                    card.classList.remove('generating');
+                    card.classList.add('done');
+                    statusLabel.textContent = '✅ Listo';
+
+                    const audioPlayer = document.getElementById(`audio-${phrase.id}`);
+                    audioPlayer.src = `/outputs/${phrase.id}.mp3?t=${Date.now()}`;
+                    audioPlayer.style.display = 'block';
+                });
+            } catch (err) {
+                currentData.phrases.forEach(phrase => {
+                    const card = document.getElementById(`phrase-card-${phrase.id}`);
+                    card.classList.remove('generating');
+                });
+                alert('Error en el robot Fish: ' + err.message);
+            }
+
+            generateFishBtn.disabled = false;
+            downloadZipBtn.disabled = false;
+        });
+    }
 
     // IMAGE AUTOMATION
     const generateImagesBtn = document.getElementById('generate-images-btn');
@@ -478,7 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
             generateAllParallelBtn.disabled = true;
             const refImageInput = document.getElementById('ref-image');
 
-            alert("¡Iniciando robots EN PARALELO!\n\nSe abrirán varias pestañas de Flow y Grok según la configuración. ¡No toques el teclado ni el ratón mientras operan!");
+            alert("¡Iniciando robots EN PARALELO!\n\nSe abrirán varias pestañas de Flow y Grok + Supertonic generará audios en local. ¡No toques el teclado ni el ratón mientras operan!");
 
             currentData.prompts.forEach((p, i) => { const c = document.getElementById(`prompt-card-${i}`); if (c) c.style.opacity = '0.5'; });
             currentData.phrases.forEach(p => {
@@ -493,6 +676,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('prompts', JSON.stringify(currentData.prompts));
                 formData.append('phrases', JSON.stringify(currentData.phrases));
                 appendWorkerSettings(formData);
+                appendVoiceSettings(formData);
                 if (refImageInput && refImageInput.files.length > 0) {
                     formData.append('ref_image', refImageInput.files[0]);
                 }
@@ -515,7 +699,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (statusLabel) statusLabel.textContent = '✅ Listo';
                     const audio = document.getElementById(`audio-${phrase.id}`);
                     if (audio) {
-                        audio.src = `/outputs/${phrase.id}.mp3?t=${new Date().getTime()}`;
+                        audio.src = `/outputs/${phrase.id}.wav?t=${Date.now()}`;
                         audio.style.display = 'block';
                     }
                 });
@@ -559,5 +743,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ─── Init ───
     loadSavedScripts();
+    checkSupertonicStatus();
+    loadSupertonicVoices();
 });

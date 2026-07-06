@@ -8,8 +8,13 @@ from flask import Flask, request, jsonify, render_template, send_file
 from script_parser import parse_script, parse_podcast_script
 from fish_automator import generate_batch_fish_audio_playwright
 import asyncio
-from fishaudio import FishAudio
 from dotenv import load_dotenv
+from supertonic_automator import (
+    generate_single_supertonic,
+    generate_batch_supertonic,
+    check_supertonic_status,
+    list_supertonic_voices,
+)
 
 load_dotenv()
 
@@ -38,6 +43,14 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['SCRIPTS_FOLDER'], exist_ok=True)
 
 FISH_AUDIO_API_KEY = os.environ.get("FISH_AUDIO_API_KEY")
+
+# Fish Audio helper (backup) — only works if fishaudio SDK + key are present
+def _try_import_fishaudio():
+    try:
+        from fishaudio import FishAudio
+        return FishAudio
+    except ImportError:
+        return None
 
 def parse_worker_count(raw_value, default_value, max_value=5):
     try:
@@ -130,8 +143,11 @@ def read_script_snapshot(filename):
 def generate_fish_audio(text, output_path):
     if not FISH_AUDIO_API_KEY:
         return False, "Fish Audio API key no configurada. Revisa el archivo .env."
+    FishAudioCls = _try_import_fishaudio()
+    if FishAudioCls is None:
+        return False, "Fish Audio SDK no instalado (pip install fish-audio-sdk)."
     try:
-        client = FishAudio(api_key=FISH_AUDIO_API_KEY)
+        client = FishAudioCls(api_key=FISH_AUDIO_API_KEY)
 
         with open(output_path, "wb") as f:
             for chunk in client.tts.stream(text=text):
@@ -202,37 +218,77 @@ def load_saved_script(filename):
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+@app.route('/supertonic-status', methods=['GET'])
+def supertonic_status():
+    online = check_supertonic_status()
+    return jsonify({"online": online})
+
+@app.route('/supertonic-voices', methods=['GET'])
+def supertonic_voices():
+    data = list_supertonic_voices()
+    return jsonify(data)
+
 @app.route('/generate-audio', methods=['POST'])
 def generate_audio():
     data = request.json
     text = data.get('text')
     file_id = data.get('id')
-    engine = data.get('engine', 'fish')
+    engine = data.get('engine', 'supertonic')
     
     if not text or not file_id:
         return jsonify({"error": "Missing text or id"}), 400
-        
-    # Limpiar el texto igual que en tu script original
-    import re
-    text = re.sub(r'[\n\r\t]', ' ', text)
-    text = re.sub(r'[""''`]', '', text)
-    text = re.sub(r'[\[\]\(\)\{\}]', '', text)
-    text = re.sub(r'[#@$%^&*+=|\\/<>]', '', text)
-    text = re.sub(r'[-]{2,}', ' ', text)
-    text = re.sub(r'[.]{2,}', '.', text)
-    text = re.sub(r'[,]{2,}', ',', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    output_path = os.path.join(app.config['OUTPUT_FOLDER'], f"{file_id}.mp3")
-    
-    if engine != 'fish':
-        return jsonify({"error": "Motor de audio no soportado. Usa Fish.audio."}), 400
 
-    success, error = generate_fish_audio(text, output_path)
+    if engine == 'supertonic':
+        voice = data.get('voice', 'M1')
+        lang = data.get('lang', 'es')
+        speed = float(data.get('speed', 1.05))
+        steps = int(data.get('steps', 8))
+        output_path = os.path.join(app.config['OUTPUT_FOLDER'], f"{file_id}.wav")
+        success, error = generate_single_supertonic(text, output_path,
+                                                     voice=voice, lang=lang,
+                                                     speed=speed, steps=steps)
+    elif engine == 'fish':
+        import re
+        text = re.sub(r'[\n\r\t]', ' ', text)
+        text = re.sub(r'["\u201c\u201d\u2018\u2019`]', '', text)
+        text = re.sub(r'[\[\]\(\)\{\}]', '', text)
+        text = re.sub(r'[#@$%^\&*+=|\\\/\<\>]', '', text)
+        text = re.sub(r'[-]{2,}', ' ', text)
+        text = re.sub(r'[.]{2,}', '.', text)
+        text = re.sub(r'[,]{2,}', ',', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        output_path = os.path.join(app.config['OUTPUT_FOLDER'], f"{file_id}.mp3")
+        success, error = generate_fish_audio(text, output_path)
+    else:
+        return jsonify({"error": f"Motor '{engine}' no soportado."}), 400
+
     if not success:
         return jsonify({"error": error}), 500
             
     return jsonify({"success": True, "file_id": file_id, "path": output_path})
+
+@app.route('/generate-batch-supertonic', methods=['POST'])
+def generate_batch_supertonic_route():
+    data = request.json
+    phrases = data.get('phrases', [])
+    voice = data.get('voice', 'M1')
+    lang = data.get('lang', 'es')
+    speed = float(data.get('speed', 1.05))
+    steps = int(data.get('steps', 8))
+
+    if not phrases:
+        return jsonify({"error": "No phrases provided"}), 400
+
+    try:
+        result = generate_batch_supertonic(
+            phrases, app.config['OUTPUT_FOLDER'],
+            voice=voice, lang=lang, speed=speed, steps=steps
+        )
+        return jsonify({"success": True, **result})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/generate-batch-fish', methods=['POST'])
 def generate_batch_fish():
@@ -381,12 +437,17 @@ def generate_all():
         app.config['DEFAULT_GROK_WORKERS']
     )
             
+    audio_engine = request.form.get('audio_engine', 'supertonic')
+    voice = request.form.get('voice', 'M1')
+    lang = request.form.get('lang', 'es')
+    speed = float(request.form.get('speed', '1.05'))
+    steps = int(request.form.get('steps', '8'))
+
     try:
         from image_automator import generate_batch_images_flow
-        from fish_automator import generate_batch_fish_audio_playwright
         from grok_automator import generate_videos_in_grok
         
-        async def run_both():
+        async def run_all():
             # Crear las tareas, pero le damos un pequeño retraso al inicio del segundo
             # para evitar que Playwright se congele al abrir dos navegadores a la vez
             task1 = asyncio.create_task(
@@ -399,7 +460,25 @@ def generate_all():
                 )
             )
             await asyncio.sleep(3)
-            task2 = asyncio.create_task(generate_batch_fish_audio_playwright(phrases, app.config['OUTPUT_FOLDER']))
+
+            # Audio — Supertonic es síncrono (HTTP), lo lanzamos en un executor
+            if audio_engine == 'supertonic':
+                import concurrent.futures
+                loop = asyncio.get_event_loop()
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    task2 = loop.run_in_executor(
+                        pool,
+                        lambda: generate_batch_supertonic(
+                            phrases, app.config['OUTPUT_FOLDER'],
+                            voice=voice, lang=lang, speed=speed, steps=steps
+                        )
+                    )
+            else:
+                from fish_automator import generate_batch_fish_audio_playwright
+                task2 = asyncio.create_task(
+                    generate_batch_fish_audio_playwright(phrases, app.config['OUTPUT_FOLDER'])
+                )
+
             await asyncio.sleep(3)
             
             prompts_dict = {p['id']: p['text'] for p in prompts}
@@ -410,7 +489,7 @@ def generate_all():
             
             await asyncio.gather(task1, task2, task3)
             
-        asyncio.run(run_both())
+        asyncio.run(run_all())
         return jsonify({"success": True})
     except Exception as e:
         import traceback
@@ -475,7 +554,7 @@ def download_zip():
     with zipfile.ZipFile(zip_path, 'w') as zipf:
         for root, dirs, files in os.walk(app.config['OUTPUT_FOLDER']):
             for file in files:
-                if file.endswith('.mp3'):
+                if file.endswith(('.mp3', '.wav')):
                     zipf.write(os.path.join(root, file), file)
                     
     return send_file(zip_path, as_attachment=True)

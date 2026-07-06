@@ -13,3 +13,5 @@ saved_scripts/
 playwright_data_*/
 image_outputs_animated/
 image_automator copy.py
+flow_podcast_outputs/
+server.log
