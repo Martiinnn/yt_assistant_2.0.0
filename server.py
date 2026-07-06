@@ -228,6 +228,23 @@ def supertonic_voices():
     data = list_supertonic_voices()
     return jsonify(data)
 
+@app.route('/delete-test-audio', methods=['POST'])
+def delete_test_audio():
+    data = request.json or {}
+    file_id = data.get('id', '_test_voice')
+    # Validar que solo borre archivos de prueba para seguridad
+    if not file_id.startswith('_test_'):
+        return jsonify({"error": "Solo se permite borrar audios de prueba."}), 400
+        
+    output_path = os.path.join(app.config['OUTPUT_FOLDER'], f"{file_id}.wav")
+    try:
+        if os.path.exists(output_path):
+            os.remove(output_path)
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": "El archivo no existe."}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/generate-audio', methods=['POST'])
 def generate_audio():
     data = request.json

@@ -366,6 +366,24 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    if (testVoiceAudio) {
+        testVoiceAudio.addEventListener('ended', async () => {
+            try {
+                // Ocultar y limpiar source para liberar el archivo
+                testVoiceAudio.style.display = 'none';
+                testVoiceAudio.src = '';
+                
+                await fetch('/delete-test-audio', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: '_test_voice' })
+                });
+            } catch (err) {
+                console.error('Error borrando audio de prueba:', err);
+            }
+        });
+    }
+
     // ─── Generate audios (Supertonic) ───
     generateAllBtn.addEventListener('click', async () => {
         if (!currentData || !currentData.phrases.length) return;
